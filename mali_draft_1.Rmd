@@ -1,0 +1,194 @@
+---
+title: "mali_draft_1"
+author: "od"
+date: "5/10/2020"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    df_print: paged
+    code_folding: hide
+---
+
+## Data preparetion for Viz
+### Step-1: loading packages
+```{r echo=TRUE, results=FALSE, warning=FALSE, message=FALSE}
+pacman::p_load(tidyverse, lubridate, janitor, ggthemes, plotly, scales, stringr, rvest, hrbrthemes,
+               wesanderson, viridis, patchwork, gganimate, directlabels, ggcharts, here, kableExtra)
+hrbrthemes::import_roboto_condensed()
+```
+
+
+### Step2: loading updated datasets:
+```{r echo=TRUE, results=FALSE, warning=FALSE, message=FALSE}
+df1 <- read_csv(here('rdata','daily_mali_cov19.csv')) %>% 
+  clean_names(.)%>% 
+  mutate(date = mdy(date))
+df2 <- read_csv(here('rdata', 'all_mali_cov19.csv')) %>% 
+  clean_names() %>% 
+  mutate(date = mdy(date))
+```
+#### Data on new cases, recovery, deaths, testing and contacts tracing:
+```{r echo=FALSE}
+df1
+```
+
+<br>
+
+#### Data on cases by region/district:
+```{r rows.print=10}
+df2
+```
+
+### Step-3: Wrangling / Manipulation / Joining datasets:
+```{r results=FALSE, warning=FALSE, message=FALSE}
+reg_pop <- read_csv(here('rdata','region_pop_mali_2018.csv'))
+
+df2_by_region <- df2 %>% 
+  left_join(reg_pop)%>% 
+  group_by(region) %>% 
+  summarise(total = sum(cas)) %>% 
+  mutate(pct = total / sum(total)) %>% 
+  left_join(reg_pop)
+
+df2_by_region <- df2_by_region %>% 
+  mutate(region = fct_reorder(region, -total),
+         rate = total / pop_total * 100000)
+```
+
+### Step-4 Prep for plotting:
+```{r}
+tot_max = df2_by_region$total %>% max()
+tom = round(tot_max, -2)  # Max number of cases by region in df2
+rate_max = df2_by_region$rate %>% max()
+rom = floor(rate_max * 1.25) # Max rate of cases/hbts by region
+big = ymd('2020/03/24') # beginning of epidemic in Mali
+jan = ymd('2020/01/01') # beginning of year
+mar = ymd('2020/03/01') # beginning of march
+dec = ymd('2020/12/01') # end of year 2020
+end = today() + 1       # spec date
+tdy = big +3            # spec date
+case_max = df1$total_cas %>% max() # Max number of cases in df1
+nvx_max = df1$nvx_cas %>% max()    # Max new cases of cases in df1
+maj = ' 10 Mai 2020'    # last update of datasets
+```
+
+
+
+<br>
+
+## Visualization {.tabset}
+
+### Plot 1
+
+```{r}
+df2_by_region %>% 
+  ggplot(aes(region, total, fill = region))+
+  geom_col(show.legend = FALSE)+
+  geom_text(aes(label=total), 
+            position=position_dodge(width=0.9), 
+            vjust=-0.25, size = 5, fontface = 'bold',  color = 'white')+
+  labs(title = 'Situation du Covid-19 au Mali',
+       subtitle = paste('Bamako + 5 regions touchées\nMise à jour:', maj),
+       x = '',
+       y = 'Nombre de cas',
+       caption = 'source: sante.gov.ml/communiqués')+
+  scale_y_continuous(limits = c(0, tom + 100), expand = c(0, 0))+
+  theme(axis.ticks = element_blank(),
+        axis.text.y = element_blank(),
+        axis.text.x = element_text(color = 'white', size = 12),
+        plot.background = element_rect(fill = '#2f4f4f'),
+        panel.grid = element_blank(),
+        panel.background = element_rect(fill = '#2f4f4f'),
+        panel.border = element_blank(),
+        plot.title = element_text(color = 'white', size = 20, face = 'bold'),
+        plot.subtitle = element_text(color = 'white', face = 'italic'),
+        axis.title = element_text(color = 'white', size = 15))
+```
+
+
+### Plot 2
+
+```{r}
+df1 %>% 
+  ggplot()+
+  geom_col(data = df1, aes(date, nvx_cas), fill = '#ad5600', color = '#ffcccb')+
+  scale_x_date(limits = c(big, end))+
+  labs(title = "Evolution des nouveaux cas de Covid-19 au Mali\n",
+       subtitle = paste('Premier cas dépisté le 25 Mars\nMise à jour:', maj),
+       x = '',
+       y = 'Nombre de nouveaux cas par jour',
+       caption = 'source: sante.gov.ml/communiqués')+
+  theme_hc()+
+  theme(plot.title = element_text(size = 15, face = 'bold', color = '#ad5600'), 
+        plot.subtitle = element_text(size = 10, face = 'italic'),
+        axis.title = element_text(color = 'white', face = 'bold'),
+        axis.text = element_text(color = '#ffcccb'),
+        panel.background = element_rect(fill = 'lightgray'),
+        plot.background = element_rect(fill = '#a6a796'))
+```
+
+### Plot 3
+
+```{r}
+df1 %>% 
+  ggplot(aes(date, total_cas))+
+  geom_line(color = '#0096fe', size = .3)+
+  geom_point(color = '#0096fe', size = 2)+
+  scale_x_date(limits = c(big, end))+
+  labs(title = "Progression de l'épidémie Covid-19 au Mali\n",
+       subtitle = paste('Premier cas dépisté le 25 Mars\nMise à jour:', maj),
+       x = '',
+       y = 'Nombre total de personnes infectées',
+       caption = 'source: sante.gov.ml/communiqués') + 
+  theme_dark() +
+  theme(plot.title = element_text(color = 'white', face = 'bold', size = 15),
+        plot.subtitle = element_text(color = 'white', face = 'italic'),
+        axis.title = element_text(color = 'white', face = 'italic'),
+        axis.text = element_text(color = '#cccccc', size = 12),
+        plot.caption = element_text(color = 'white'),
+        panel.background = element_rect(fill = "#2D2D2D"),
+        plot.background = element_rect(fill = "#2D2D2D"),
+        panel.grid = element_line(linetype = 'dashed', size = .2))
+```
+
+### Plot 4
+
+```{r}
+bar_chart(df2_by_region, region, rate) +
+  theme(axis.text.x = element_text(face = 'bold'))+
+  labs(x= '', y = '',
+       title = "Epidemie de Covid-19 au Mali",
+       subtitle = "Nombre de cas de Covid-19 pour 100000 habitants",
+       caption = "Source: Mali/gov")+
+  theme_nightblue()+ 
+  theme(plot.title = element_text(face = 'bold', size = 20))
+```
+
+### Plot-5
+
+```{r}
+df1 %>% 
+  ggplot(aes(date, total_cas))+
+  geom_line(color = '#0096fe', size = 2)+
+  geom_point(aes(y = total_cas), color = 'gold', size = 3)+
+  scale_x_date(limits = c(big, end))+
+  coord_cartesian(clip = 'off')+
+  labs(x = '', y= '',
+       title = "Progression de l'épidémie Covid-19 au Mali",
+       subtitle = 'Total cumulé de personnes infectées')+ 
+  theme_nightblue()+
+  theme(plot.title = element_text(color = 'cyan', face = 'bold', size = 16),
+        plot.subtitle = element_text(color = 'white'))+
+  geom_dl(aes(label = sprintf("%0.0f", total_cas)), 
+          method = list('last.points', font = 'bold'), 
+          color = 'white',
+          position = position_nudge(1)) +
+  transition_reveal(date)+
+  ease_aes('cubic-in-out') -> aa3
+animate(aa3,
+        duration = 35, end_pause = 60)
+```
+
+####
